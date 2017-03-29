@@ -9,6 +9,20 @@ use Drupal\Core\Template\Attribute;
 use Drupal\Core\Url;
 use Drupal\Core\Link;
 use Drupal\Component\Utility\Html;
+use Drupal\Core\Session\AccountInterface;
+use Drupal\user\UserInterface;
+use Drupal\user\Entity\User;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\panels\Plugin\DisplayVariant\PanelsDisplayVariant;
+use Drupal\contacts\ContactsProfileAccessControlHandler;
+use Drupal\Core\Render\Element;
+use Drupal\user\RoleInterface;
+use Drupal\Component\Utility\Html;
+use Drupal\contacts\Form\AddProfileTabForm;
+use Drupal\contacts\Form\ContactsProfileForm;
+use Drupal\views\ViewExecutable;
+use Drupal\views\Plugin\views\cache\CachePluginBase;
+use Drupal\contacts\Controller\DashboardController;
 
 /**
  * Implements hook_theme().
@@ -27,9 +41,9 @@ function contacts_theme() {
       'variables' => ['content' => [], 'attributes' => []],
       'template' => 'contacts-summary',
     ],
-    'contacts_notes' => [
+    'contacts_form' => [
       'variables' => ['content' => []],
-      'template' => 'contacts-notes',
+      'template' => 'contacts-form',
     ],
     'contacts_dash_summary' => [
       'variables' => ['user' => NULL],
@@ -42,6 +56,10 @@ function contacts_theme() {
     'user__contacts_dashboard_row_small' => [
       'base hook' => 'user',
       'template' => 'user--contacts-dashboard-row-small',
+    ],
+    'views_exposed_form__contacts_dashboard_indexed' => [
+      'base hook' => 'views_exposed_form',
+      'template' => 'views-exposed-form--contacts-dashboard-indexed',
     ],
   ];
 }
@@ -72,11 +90,10 @@ function template_preprocess_contacts_indiv(array &$variables) {
  *   - attributes: HTML markup attributes for the content wrapper.
  *   - content: Default markup content for this tab.
  */
-function template_preprocess_contacts_notes(array &$variables) {
+function template_preprocess_contacts_form(array &$variables) {
   $variables['attributes']['id'] = 'contacts-tabs-content';
   $variables['attributes']['class'][] = 'contacts-tabs-content';
   $variables['attributes']['class'][] = 'flex-fill';
-
 }
 
 /**
@@ -190,7 +207,9 @@ function template_preprocess_contacts_dash_summary(array &$variables) {
  */
 function contacts_entity_type_build(array &$entity_types) {
   /* @var $entity_types \Drupal\Core\Entity\EntityTypeInterface[] */
-  $entity_types['profile']->setFormClass('crm_dashboard', 'Drupal\profile\Form\ProfileForm');
+  $entity_types['profile']->setFormClass('crm_dashboard', ContactsProfileForm::class);
+  $entity_types['profile']->setHandlerClass('access', ContactsProfileAccessControlHandler::class);
+  $entity_types['profile_type']->setFormClass('add_tab', AddProfileTabForm::class);
 }
 
 /**
@@ -457,6 +476,338 @@ function contacts_preprocess_block(&$variables, $hook) {
           unset($variables['content'][$plugin_id]);
         }
       }
+    }
+    if (empty($variables['image'])) {
+      $variables['image'] = $default_image_element;
+      $variables['image']['#uri'] = 'contacts://images/default-org.png';
+    }
+  }
+  // Assume this is a web account, so give some indiv like features.
+  else {
+    if (empty($variables['image'])) {
+      $variables['image'] = $default_image_element;
+      $variables['image']['#uri'] = 'contacts://images/default-indiv.png';
+    }
+  }
+}
+
+/**
+ * Sort roles by CRM then alphabetically.
+ *
+ * @param \Drupal\user\RoleInterface $a
+ *   The first role.
+ * @param \Drupal\user\RoleInterface $b
+ *   The first role.
+ *
+ * @return int
+ *   The comparison result for uasort().
+ */
+function contacts_sort_roles(RoleInterface $a, RoleInterface $b) {
+  $a_crm = substr($a->id(), 0, 4) == 'crm_';
+  $b_crm = substr($b->id(), 0, 4) == 'crm_';
+  if ($a_crm xor $b_crm) {
+    return $a_crm ? -1 : 1;
+  }
+  return strnatcmp($a->label(), $b->label());
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ */
+function contacts_preprocess_views_view_unformatted(&$variables) {
+  if ($variables['view']->id() == 'contacts_dashboard_indexed') {
+    foreach ($variables['rows'] as $id => &$row) {
+      $url = Url::fromRoute('page_manager.page_view_contacts_dashboard_contact', [
+        'user' => $row['content']['#user']->id(),
+      ]);
+      $row['attributes']->setAttribute('data-row-link', $url->toString());
+    }
+  }
+}
+
+/**
+ * Implements hook_user_format_name_alter().
+ */
+function contacts_user_format_name_alter(&$name, AccountInterface $account) {
+  // @todo: Improve this when we have primary fields.
+  // Get hold of a full user account.
+  if ($account instanceof UserInterface) {
+    $user = $account;
+  }
+  elseif ($account->id()) {
+    $user = User::load($account->id());
+  }
+  else {
+    return;
+  }
+
+  /* @var \Drupal\user\UserInterface $user */
+  if ($user->hasRole('crm_indiv')) {
+    if ($user->profile_crm_indiv->entity && $crm_name = $user->profile_crm_indiv->entity->crm_name->value) {
+      $name = $crm_name;
+    }
+  }
+  elseif ($user->hasRole('crm_org')) {
+    if ($user->profile_crm_org->entity && $crm_name = $user->profile_crm_org->entity->crm_org_name->value) {
+      $name = $crm_name;
+    }
+  }
+
+  // If we have no username, show the ID.
+  if (empty($name)) {
+    $name = t('User @id', ['@id' => $user->id()]);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contacts_form_views_exposed_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  if ($form_state->get('view')->id() == 'contacts_dashboard_indexed') {
+    $form['#attributes']['class'][] = 'contacts-search-form';
+    $form['search']['#title_display'] = 'invisible';
+    $form['search']['#attributes']['placeholder'] = $form['#info']['filter-search_api_fulltext']['label'];
+    $form['search']['#wrapper_attributes']['class'][] = 'flex-fill';
+    $form['actions']['reset']['#attributes']['class'][] = 'link';
+  }
+}
+
+/**
+ * Implements hook_panels_build_alter().
+ */
+function contacts_panels_build_alter(array &$build, PanelsDisplayVariant $panels_display) {
+  if ($panels_display->getStorageId() == 'contacts_dashboard-panels_variant-0') {
+    // Find the crm_type facet and make the labels plural.
+    if (isset($build['sidebar'])) {
+      foreach (Element::children($build['sidebar']) as $key) {
+        $block = &$build['sidebar'][$key];
+        if (isset($block['#plugin_id']) && $block['#plugin_id'] == 'facet_block:crm_type') {
+          foreach ($block['content'][0]['#items'] as &$item) {
+            switch ($item['#attributes']['data-drupal-facet-item-value']) {
+              case 'crm_indiv':
+                $item['#title']['#value'] = t('People');
+                break;
+              case 'crm_org':
+                $item['#title']['#value'] = t('Organisations');
+                break;
+            }
+          }
+        }
+      }
+    }
+  }
+  elseif ($panels_display->getStorageId() == 'contacts_dashboard_contact-panels_variant-0') {
+    $build['#attached']['library'][] = 'contacts/contact';
+  }
+}
+
+/**
+ * Implements hook_preprocess().
+ */
+function contacts_preprocess_block(&$variables, $hook) {
+  if (isset($variables['plugin_id']) && $variables['plugin_id'] == 'local_actions_block') {
+    // Do a first pass to alter our group items.
+    foreach ($variables['content'] as $plugin_id => $item) {
+      if (empty($item['#link']['localized_options']['is_action_group'])) {
+        continue;
+      }
+
+      $id = Html::getUniqueId(Html::getId('local-action-group-' . str_replace('.', '-', $plugin_id)));
+
+      $group = [
+        '#prefix' => '<li class="action-group-wrapper">',
+        '#suffix' => '</li>',
+        '#is_group' => TRUE,
+        '#attributes' => [
+          'class' => ['action-group-wrapper'],
+        ],
+        'button' => [
+          '#type' => 'html_tag',
+          '#tag' => 'button',
+          '#value' => $item['#link']['title'],
+          '#attributes' => isset($item['#link']['localized_options']['attributes']) ? $item['#link']['localized_options']['attributes'] : [],
+        ],
+        'group' => [
+          '#type' => 'container',
+          '#attributes' => [
+            'id' => $id,
+            'class' => ['js-hide', 'action-group'],
+          ],
+          'links' => [
+            '#theme' => 'links',
+            '#set_active_class' => FALSE,
+            '#links' => [],
+            '#attributes' => [
+              'class' => ['action-group-links'],
+            ],
+          ],
+        ],
+        '#attached' => [
+          'library' => 'contacts/action.group',
+        ],
+      ];
+      $group['button']['#attributes']['class'][] = 'action-group-control';
+      $group['button']['#attributes']['data-action-group'] = $id;
+      if (!empty($item['#link']['localized_options']['attributes']['title'])) {
+        $group['group']['links']['#heading']['text'] = $item['#link']['localized_options']['attributes']['title'];
+      }
+
+      $variables['content'][$plugin_id] = $group;
+    }
+
+    // Now pass through and move links into their groups.
+    foreach ($variables['content'] as $plugin_id => $action) {
+      // Skip inaccessible links.
+      if (isset($action['#access']) && !$action['#access']) {
+        continue;
+      }
+
+      // Ignore anything that isn't in a group.
+      if (empty($action['#link']['localized_options']['action_group'])) {
+        continue;
+      }
+
+      $group_name = $action['#link']['localized_options']['action_group'];
+      if (!empty($variables['content'][$group_name]['#is_group'])) {
+        // Get our links container.
+        $action['#link'] += $action['#link']['localized_options'];
+        $variables['content'][$group_name]['group']['links']['#links'][$plugin_id] = $action['#link'];
+        unset($variables['content'][$plugin_id]);
+      }
+    }
+
+    // Now pass over groups and remove any items without links.
+    foreach ($variables['content'] as $plugin_id => $item) {
+      if (!empty($variables['content'][$plugin_id]['#is_group'])) {
+        if (empty($item['group']['links']['#links'])) {
+          unset($variables['content'][$plugin_id]);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contacts_form_user_register_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  $form['account']['roles']['#default_value'][] = 'crm_indiv';
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ */
+function contacts_form_profile_type_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+  $profile_type = $form_state->getFormObject()->getEntity();
+  $role_storage = \Drupal::entityTypeManager()->getStorage('user_role');
+
+  $form['roles']['#title'] = t('Profile can be owned by users with these roles');
+
+  if (!isset($form['owner_permissions'])) {
+    /* @var \Drupal\user\RoleInterface $role */
+    $role = $role_storage->load(RoleInterface::AUTHENTICATED_ID);
+    $type_id = $profile_type->id();
+    $form['owner_permissions'] = [
+      '#type' => 'checkboxes',
+      '#title' => t('Owner is allowed to'),
+      '#options' => [
+        "add own {$type_id} profile" => t('Add'),
+        "edit own {$type_id} profile" => t('Edit'),
+        "view own {$type_id} profile" => t('View'),
+      ],
+    ];
+
+    // Set default values.
+    if ($profile_type->isNew()) {
+      $form['owner_permissions']['#default_value'] = array_keys($form['owner_permissions']['#options']);
+    }
+    else {
+      foreach (array_keys($form['owner_permissions']['#options']) as $permission) {
+        if ($role->hasPermission($permission)) {
+          $form['owner_permissions']['#default_value'][] = $permission;
+        }
+      }
+    }
+
+    $form['actions']['submit']['#submit'][] = 'contacts_form_profile_type_store_permissions';
+  }
+
+  $form['contacts_context'] = [
+    '#type' => 'checkboxes',
+    '#title' => t('Contexts to show this tab for'),
+    '#description' => t('If none are selected it will always be shown.'),
+    '#options' => [],
+    '#default_value' => $profile_type->getThirdPartySetting('contacts', 'context', []),
+  ];
+  foreach ($role_storage->loadMultiple() as $role) {
+    // Skip any CRM or admin roles.
+    if (substr($role->id(), 0, 4) == 'crm_' || $role->isAdmin() || in_array($role->id(), [RoleInterface::ANONYMOUS_ID, RoleInterface::AUTHENTICATED_ID])) {
+      continue;
+    }
+    $form['contacts_context']['#options'][$role->id()] = $role->label();
+  }
+  $form['actions']['submit']['#submit'][] = 'contacts_form_profile_type_store_contexts';
+}
+
+/**
+ * Submission callback to store the permissions on the profile type form.
+ */
+function contacts_form_profile_type_store_permissions($form, FormStateInterface $form_state) {
+  /* @var \Drupal\user\RoleInterface $role */
+  $role = \Drupal::entityTypeManager()->getStorage('user_role')->load(RoleInterface::AUTHENTICATED_ID);
+  $new_permissions = array_keys($form_state->getValue('owner_permissions'), TRUE);
+  // If the new permissions are not identical to the old permissions, revoke all
+  // and add the selected ones.
+  if ($new_permissions != $form['owner_permissions']['#default_value']) {
+    foreach (array_keys($form['owner_permissions']['#options']) as $permission) {
+      $role->revokePermission($permission);
+    }
+    foreach ($new_permissions as $permission) {
+      $role->grantPermission($permission);
+    }
+    $role->save();
+  }
+}
+
+/**
+ * Submission callback to store the contexts on the profile type form.
+ */
+function contacts_form_profile_type_store_contexts($form, FormStateInterface $form_state) {
+  $profile_type = $form_state->getFormObject()->getEntity();
+  $profile_type->setThirdPartySetting('contacts', 'context', $form_state->getValue('contacts_context'));
+  $profile_type->save();
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ */
+function contacts_menu_local_tasks_alter(&$data, $route_name) {
+  if ($route_name == 'page_manager.page_view_contacts_dashboard_contact') {
+    $active_context = DashboardController::getActiveContext();
+
+    /* @var \Drupal\user\RoleInterface[] $roles */
+    $roles = \Drupal::entityTypeManager()->getStorage('user_role')
+      ->loadMultiple(\Drupal::currentUser()->getRoles(TRUE));
+    foreach ($roles as $role) {
+      // Skip any CRM or admin roles.
+      if (substr($role->id(), 0, 4) == 'crm_' || $role->isAdmin()) {
+        continue;
+      }
+
+      $data['tabs'][0]['contacts_context_' . $role->id()] = [
+        '#theme' => 'menu_local_task',
+        '#link' => [
+          'title' => $role->label(),
+          'url' => Url::fromRoute('<current>',
+            [],
+            [
+              'query' => ['context' => $role->id()],
+            ]
+          ),
+          'localized_options' => [],
+        ],
+        '#active' => $active_context == $role->id(),
+      ];
     }
   }
 }

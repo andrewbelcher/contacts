@@ -1,0 +1,12 @@
+{% if content -%}
+  <div {{ attributes }}>
+    {{ content|without('middle') }}
+    <div class="dash-block-1 clearfix">
+      <div class="dash-middle">
+        {{ content.middle | raw }}
+      </div>
+    </div>
+  </div>
+{%- endif %}
+
+

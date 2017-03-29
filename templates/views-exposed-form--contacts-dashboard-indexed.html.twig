@@ -1,0 +1,39 @@
+{#
+/**
+ * @file
+ * Contacts dashboard views exposed form.
+ *
+ * Available variables:
+ * - form: A render element representing the form.
+ *
+ * @see template_preprocess_views_exposed_form()
+ *
+ * @ingroup themeable
+ */
+#}
+{% if q is not empty %}
+  {#
+    This ensures that, if clean URLs are off, the 'q' is added first,
+    as a hidden form element, so that it shows up first in the POST URL.
+  #}
+{{ q }}
+{% endif %}
+<div class="contacts-search flex-container flex-container-rows">
+  {{ form.search }}
+  <div class="contact-submit-wrapper">{{ form.actions.submit }}</div>
+</div>
+{{ form|without('search', 'actions') }}
+{#
+  To only render our actions if we have buttons other than the submit, we need
+  to loop over the children checking their access and getting a count.
+#}
+{% set action_count = 0 %}
+{% for key, child in form.actions|without('submit') if key|first != '#' %}
+  {% if child['#access'] is not defined or child['#access'] %}
+  {% set action_count = action_count + 1 %}
+  {% endif %}
+{% endfor %}
+{# If we have actions to render, do so. #}
+{% if action_count > 0 %}
+{{ form.actions|without('submit') }}
+{% endif %}

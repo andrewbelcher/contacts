@@ -6,6 +6,8 @@
   */
 
 use Drupal\Core\Installer\Exception\InstallerException;
+use Drupal\user\Entity\Role;
+use Drupal\user\RoleInterface;
 
 /**
  * Implements hook_requirements().
@@ -88,4 +90,13 @@ function contacts_module_preinstall($module) {
       }
     }
   }
+}
+
+/**
+ * Implements hook_install().
+ */
+function contacts_install() {
+  Role::load(RoleInterface::AUTHENTICATED_ID)
+    ->set('label', 'User account')
+    ->save();
 }

@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies: {  }
+id: staff
+label: 'Staff admin'
+weight: 5
+is_admin: null
+permissions:
+  0: 'view contacts'
+  1: 'access toolbar'
+  2: 'access user profiles'
+  3: 'add contacts'
+  4: 'administer users'
+  5: 'view the administration theme'
+  7: 'administer profile display'
+  8: 'administer profile fields'
+  9: 'administer profile form display'
+  10: 'administer profile types'
+  11: 'administer contacts'
+  12: 'bypass profile access'
+  13: 'administer permissions'
