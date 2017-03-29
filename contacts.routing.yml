@@ -28,3 +28,13 @@ contacts.add_org_form:
     _permission: 'add contacts'
   options:
     _admin_route: TRUE
+
+contacts.add_profile_tab_form:
+  path: '/admin/contacts/configure/add-tab'
+  defaults:
+    _entity_form: profile_type.add_tab
+    _title: 'Add tab'
+  requirements:
+    _permission: 'administer contacts'
+  options:
+    _admin_route: TRUE

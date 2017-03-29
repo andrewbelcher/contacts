@@ -5,6 +5,7 @@ id: summary
 label: Summary
 path: summary
 weight: -99
+contexts: {  }
 relationships: {  }
 block:
   id: contact_summary_tab

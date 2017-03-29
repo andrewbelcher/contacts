@@ -9,6 +9,7 @@ id: crm_org
 label: Organisation
 path: org
 weight: -10
+contexts: {  }
 relationships:
   profile:
     id: 'typed_data_entity_relationship:entity:user:profile_crm_org'

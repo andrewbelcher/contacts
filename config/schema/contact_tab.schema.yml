@@ -16,6 +16,12 @@ contacts.contact_tab.*:
     weight:
       type: integer
       label: 'Weight'
+    contexts:
+      type: sequence
+      label: 'Contexts'
+      sequence:
+        type: string
+        label: 'Context'
     relationships:
       type: sequence
       label: 'Relationships'

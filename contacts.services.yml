@@ -23,3 +23,8 @@ services:
   contacts.tab_manager:
     class: Drupal\contacts\ContactsTabManager
     arguments: ['@entity_type.manager', '@plugin.manager.block', '@context.handler', '@plugin.manager.ctools.relationship', '@current_user', '@user.private_tempstore', '@request_stack']
+  access_check.profile_type.contact_profile_access:
+    class: Drupal\contacts\Access\ContactProfileAccessCheck
+    arguments: ['@entity_type.manager']
+    tags:
+      - { name: access_check, applies_to: _profile_access_check }

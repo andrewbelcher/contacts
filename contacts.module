@@ -16,6 +16,11 @@ use Drupal\user\RoleInterface;
 use Drupal\views\ViewExecutable;
 use Drupal\views\Plugin\views\cache\CachePluginBase;
 use Drupal\panels\Plugin\DisplayVariant\PanelsDisplayVariant;
+use Drupal\Core\Session\AccountInterface;
+use Drupal\user\UserInterface;
+use Drupal\user\Entity\User;
+use Drupal\contacts\ContactsProfileAccessControlHandler;
+use Drupal\contacts\Form\AddProfileTabForm;
 
 /**
  * Implements hook_theme().
@@ -157,6 +162,8 @@ function template_preprocess_contacts_dash_summary(array &$variables) {
 function contacts_entity_type_build(array &$entity_types) {
   /* @var $entity_types \Drupal\Core\Entity\EntityTypeInterface[] */
   $entity_types['profile']->setFormClass('crm_dashboard', ContactsProfileForm::class);
+  $entity_types['profile']->setHandlerClass('access', ContactsProfileAccessControlHandler::class);
+  $entity_types['profile_type']->setFormClass('add_tab', AddProfileTabForm::class);
 }
 
 /**
@@ -429,8 +436,141 @@ function contacts_preprocess_block(&$variables, $hook) {
 }
 
 /**
+ * Implements hook_user_format_name_alter().
+ */
+function contacts_user_format_name_alter(&$name, AccountInterface $account) {
+  // @todo: Improve this when we have primary fields.
+  // Get hold of a full user account.
+  if ($account instanceof UserInterface) {
+    $user = $account;
+  }
+  elseif ($account->id()) {
+    $user = User::load($account->id());
+  }
+  else {
+    return;
+  }
+
+  /* @var \Drupal\user\UserInterface $user */
+  if ($user->hasRole('crm_indiv')) {
+    if ($user->profile_crm_indiv->entity && $crm_name = $user->profile_crm_indiv->entity->crm_name->value) {
+      $name = $crm_name;
+    }
+  }
+  elseif ($user->hasRole('crm_org')) {
+    if ($user->profile_crm_org->entity && $crm_name = $user->profile_crm_org->entity->crm_org_name->value) {
+      $name = $crm_name;
+    }
+  }
+
+  // If we have no username, show the ID.
+  if (empty($name)) {
+    $name = t('User @id', ['@id' => $user->id()]);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contacts_form_views_exposed_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  if ($form_state->get('view')->id() == 'contacts_dashboard_indexed') {
+    $form['#attributes']['class'][] = 'contacts-search-form';
+    $form['search']['#title_display'] = 'invisible';
+    $form['search']['#attributes']['placeholder'] = $form['#info']['filter-search_api_fulltext']['label'];
+    $form['search']['#wrapper_attributes']['class'][] = 'flex-fill';
+    $form['actions']['reset']['#attributes']['class'][] = 'link';
+  }
+}
+
+/**
  * Implements hook_form_FORM_ID_alter().
  */
 function contacts_form_user_register_form_alter(&$form, FormStateInterface $form_state, $form_id) {
   $form['account']['roles']['#default_value'][] = 'crm_indiv';
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ */
+function contacts_form_profile_type_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  $profile_type = $form_state->getFormObject()->getEntity();
+  $role_storage = \Drupal::entityTypeManager()->getStorage('user_role');
+
+  $form['roles']['#title'] = t('Profile can be owned by users with these roles');
+
+  if (!isset($form['owner_permissions'])) {
+    /* @var \Drupal\user\RoleInterface $role */
+    $role = $role_storage->load(RoleInterface::AUTHENTICATED_ID);
+    $type_id = $profile_type->id();
+    $form['owner_permissions'] = [
+      '#type' => 'checkboxes',
+      '#title' => t('Owner is allowed to'),
+      '#options' => [
+        "add own {$type_id} profile" => t('Add'),
+        "edit own {$type_id} profile" => t('Edit'),
+        "view own {$type_id} profile" => t('View'),
+      ],
+    ];
+
+    // Set default values.
+    if ($profile_type->isNew()) {
+      $form['owner_permissions']['#default_value'] = array_keys($form['owner_permissions']['#options']);
+    }
+    else {
+      foreach (array_keys($form['owner_permissions']['#options']) as $permission) {
+        if ($role->hasPermission($permission)) {
+          $form['owner_permissions']['#default_value'][] = $permission;
+        }
+      }
+    }
+
+    $form['actions']['submit']['#submit'][] = 'contacts_form_profile_type_store_permissions';
+  }
+}
+
+/**
+ * Submission callback to store the permissions on the profile type form.
+ */
+function contacts_form_profile_type_store_permissions($form, FormStateInterface $form_state) {
+  /* @var \Drupal\user\RoleInterface $role */
+  $role = \Drupal::entityTypeManager()->getStorage('user_role')->load(RoleInterface::AUTHENTICATED_ID);
+  $new_permissions = array_keys($form_state->getValue('owner_permissions'), TRUE);
+  // If the new permissions are not identical to the old permissions, revoke all
+  // and add the selected ones.
+  if ($new_permissions != $form['owner_permissions']['#default_value']) {
+    foreach (array_keys($form['owner_permissions']['#options']) as $permission) {
+      $role->revokePermission($permission);
+    }
+    foreach ($new_permissions as $permission) {
+      $role->grantPermission($permission);
+    }
+    $role->save();
+  }
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ */
+function contacts_menu_local_tasks_alter(&$data, $route_name) {
+  if ($route_name == 'page_manager.page_view_contacts_dashboard_contact') {
+    /* @var \Drupal\contacts\ContactsTabManagerInterface $tab_manager */
+    $tab_manager = \Drupal::service('contacts.tab_manager');
+    $active_context = $tab_manager->getActiveContext();
+    foreach ($tab_manager->getContexts() as $id => $label) {
+      $data['tabs'][0]['contacts_context_' . $id] = [
+        '#theme' => 'menu_local_task',
+        '#link' => [
+          'title' => $label,
+          'url' => Url::fromRoute('<current>',
+            [],
+            [
+              'query' => ['context' => $id],
+            ]
+          ),
+          'localized_options' => [],
+        ],
+        '#active' => $active_context == $id,
+      ];
+    }
+  }
 }

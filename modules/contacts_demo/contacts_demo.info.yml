@@ -1,0 +1,8 @@
+name: Contacts Demo
+type: module
+description: 'Generate demo content for contacts module.'
+package: Contacts
+core: '8.x'
+
+dependencies:
+  - contacts
