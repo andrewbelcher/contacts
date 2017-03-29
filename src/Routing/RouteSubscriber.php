@@ -16,7 +16,7 @@ class RouteSubscriber extends RouteSubscriberBase {
    */
   protected function alterRoutes(RouteCollection $collection) {
     if ($route = $collection->get('page_manager.page_view_contacts_dashboard_contact')) {
-      $route->setDefault('subpage', 'account');
+      $route->setDefault('subpage', 'summary');
       $route->setRequirement('user', '\d+');
       $route->setRequirement('subpage', '[\w-]+');
       $route->setRequirement('_permission', 'view contacts');

@@ -685,6 +685,27 @@ function contacts_preprocess_block(&$variables, $hook) {
       }
     }
   }
+
+  $edit_name = \Drupal::request()->query->get('edit');
+  if (!$edit_name && isset($variables['elements']['#edit_name'])) {
+    $edit_name = $variables['elements']['#edit_name'];
+    $route_match = \Drupal::routeMatch();
+    $params = $route_match->getRawParameters()->all();
+    $query = ['edit' => $edit_name];
+    $variables['label'] = new \Drupal\Component\Render\FormattableMarkup('@label [@link]', [
+      '@label' => $variables['label'],
+      '@link' => Link::createFromRoute('Edit', $route_match->getRouteName(), $params, [
+        'query' => $query,
+        'attributes' => [
+          'class' => 'use-ajax',
+          'data-ajax-progress' => 'fullscreen',
+          'data-ajax-url' => Url::fromRoute('contacts.ajax_subpage', $params, [
+            'query' => $query,
+          ])->toString(),
+        ],
+      ])->toString(),
+    ]);
+  }
 }
 
 /**

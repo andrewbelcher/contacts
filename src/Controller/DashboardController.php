@@ -99,7 +99,7 @@ class DashboardController extends ControllerBase {
     $block_manager = \Drupal::service('plugin.manager.block');
     $tabs = [];
 
-    /*/ Summary tab.
+    // Summary tab.
     $block = $block_manager->createInstance('contact_summary_tab', [
       'label' => 'Summary',
     ]);
@@ -109,7 +109,7 @@ class DashboardController extends ControllerBase {
       'weight' => -99,
       'block' => $block,
       'manage links' => [],
-    ];*/
+    ];
 
     // One for each of the profile types.
     /* @var \Drupal\profile\Entity\ProfileTypeInterface[] $profile_types */
@@ -208,7 +208,7 @@ class DashboardController extends ControllerBase {
     $block->setContext('entity', $contact_context);
     $tabs['account'] = [
       'title' => 'User account',
-      'weight' => -10,
+      'weight' => 90,
       'block' => $block,
       'manage links' => [],
     ];

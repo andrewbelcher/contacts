@@ -4,6 +4,10 @@ namespace Drupal\contacts\Plugin\Block;
 
 use Drupal\Core\Block\BlockBase;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
+use Drupal\Core\Plugin\Context\Context;
+use Drupal\Core\Plugin\Context\ContextDefinition;
+use Drupal\Core\Render\Markup;
+use Drupal\profile\Entity\Profile;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Block\BlockManager;
 
@@ -55,17 +59,21 @@ class ContactSummaryTab extends BlockBase implements ContainerFactoryPluginInter
   public function build() {
     $build = [
       '#theme' => 'contacts_summary',
-      '#content' => [
-        'right' => '<div><h2>Summary Operations</h2><p>This block contains a list of useful operations to perform on the contact.</p></div>',
-      ],
+      '#content' => [],
       '#attached' => [
-        'library' => ['contacts/contacts-dashboard'],
+        'library' => [
+          'contacts/contacts',
+          'contacts/demo.sortable',
+        ],
       ],
     ];
 
     $contact = $this->getContextValue('user');
+
+    // Main profile.
     $config = [
       'label_display' => 'visible',
+      'label' => 'Summary',
       'view_mode' => 'default',
     ];
 
@@ -78,12 +86,54 @@ class ContactSummaryTab extends BlockBase implements ContainerFactoryPluginInter
       $profile = $contact->profile_crm_org->entity;
     }
 
-    // Add our context and build it..
     if (!empty($profile)) {
-      $plugin_block = $this->pluginManagerBlock->createInstance('entity_view:profile', $config);
-      $plugin_block->setContextValue('entity', $profile);
-      $build['#content']['left'] = $plugin_block->build();
+      $edit = \Drupal::request()->query->get('edit');
+      /* @var \Drupal\Core\Block\BlockPluginInterface $plugin_block */
+      $plugin_block = $this->pluginManagerBlock->createInstance($edit == 'summary' ? 'contacts_entity_form' : 'entity_view:profile', $config);
+      $profile_context = new Context(new ContextDefinition('entity:profile'), $profile);
+      $plugin_block->setContext('entity', $profile_context);
+      $build['#content']['left'] = [
+        '#theme' => 'block',
+        '#attributes' => [],
+        '#plugin_id' => $plugin_block->getPluginId(),
+        '#base_plugin_id' => $plugin_block->getBaseId(),
+        '#derivative_plugin_id' => $plugin_block->getDerivativeId(),
+        '#configuration' => $plugin_block->getConfiguration(),
+        'content' => $plugin_block->build(),
+        '#edit_name' => 'summary',
+      ];
     }
+
+    // Notes.
+    $config = [
+      'label_display' => 'visible',
+      'label' => 'Notes',
+      'view_mode' => 'default',
+    ];
+    $profile = $contact->profile_crm_notes->entity;
+    if (empty($profile)) {
+      $profile = Profile::create([
+        'type' => 'crm_notes',
+        'uid' => $contact->id(),
+      ]);
+      $profile->save();
+    }
+
+    $edit = \Drupal::request()->query->get('edit');
+    /* @var \Drupal\Core\Block\BlockPluginInterface $plugin_block */
+    $plugin_block = $this->pluginManagerBlock->createInstance($edit == 'notes' ? 'contacts_entity_form' : 'entity_view:profile', $config);
+    $profile_context = new Context(new ContextDefinition('entity:profile'), $profile);
+    $plugin_block->setContext('entity', $profile_context);
+    $build['#content']['right'] = [
+      '#theme' => 'block',
+      '#attributes' => [],
+      '#plugin_id' => $plugin_block->getPluginId(),
+      '#base_plugin_id' => $plugin_block->getBaseId(),
+      '#derivative_plugin_id' => $plugin_block->getDerivativeId(),
+      '#configuration' => $plugin_block->getConfiguration(),
+      'content' => $plugin_block->build(),
+      '#edit_name' => 'notes',
+    ];
 
     return $build;
   }

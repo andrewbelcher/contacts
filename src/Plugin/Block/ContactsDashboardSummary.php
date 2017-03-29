@@ -33,7 +33,7 @@ class ContactsDashboardSummary extends BlockBase {
       '#weight' => 1,
       '#user' => $this->user,
       '#attached' => [
-        'library' => ['contacts/contacts-dashboard'],
+        'library' => ['contacts/contact'],
       ],
     ];
 

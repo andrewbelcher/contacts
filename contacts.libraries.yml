@@ -60,3 +60,11 @@ contact:
   css:
     theme:
       css/contact.css: {}
+
+
+# Demos
+demo.sortable:
+  js:
+    js/demo-sortable.js: {}
+  dependencies:
+    - core/jquery.ui.sortable
