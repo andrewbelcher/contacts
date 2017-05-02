@@ -114,6 +114,34 @@ class ContactTab extends ConfigEntityBase implements ContactTabInterface {
   /**
    * {@inheritdoc}
    */
+  public function getContexts() {
+    return $this->contexts;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setContexts(array $contexts) {
+    $this->contexts = $contexts;
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function showInContext($context) {
+    // No contexts means always show.
+    if (empty($this->contexts)) {
+      return TRUE;
+    }
+
+    // See if the context is one of ours.
+    return in_array($context, $this->contexts);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getRelationships() {
     return $this->relationships;
   }

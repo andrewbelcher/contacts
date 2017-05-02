@@ -198,6 +198,11 @@ class ContactsTabManager implements ContactsTabManagerInterface {
    * {@inheritdoc}
    */
   public function verifyTab(ContactTabInterface $tab, UserInterface $contact, BlockPluginInterface $block = NULL) {
+    // We can check context without loading the block plugin.
+    if (!$tab->showInContext($this->getActiveContext())) {
+      return FALSE;
+    }
+
     // Get the block if we don't already have it.
     if (!$block) {
       $block = $this->getBlock($tab, $contact, FALSE);
@@ -219,6 +224,51 @@ class ContactsTabManager implements ContactsTabManagerInterface {
     // @todo: Add additional checks...
 
     return $block->_contactTabVerified = TRUE;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getContexts() {
+    $role_ids = $this->currentUser->getRoles(TRUE);
+    $roles = [];
+    /* @var \Drupal\user\RoleInterface $role */
+    foreach ($this->entityTypeManager->getStorage('user_role')->loadMultiple($role_ids) as $role) {
+      // Skip any CRM or admin roles.
+      if (substr($role->id(), 0, 4) == 'crm_' || $role->isAdmin()) {
+        continue;
+      }
+      $roles[$role->id()] = $role->label();
+    }
+    return $roles;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getActiveContext() {
+    $tempstore = $this->tempstore->get('contacts');
+    $request = $this->requestStack->getCurrentRequest();
+    $contexts = $this->getContexts();
+
+    // See if we already have an context in the query.
+    $active_context = $request->query->get('context');
+    if ($active_context) {
+      $tempstore->set('active_context', $request->query->get('context'));
+    }
+    // Otherwise, attempt to get from the tempostore.
+    else {
+      $active_context = $tempstore->get('active_context');
+    }
+
+    // If we still don't have a valid context, get the first.
+    if (!$active_context || !isset($contexts[$active_context])) {
+      $contexts = array_keys($contexts);
+      $active_context = $contexts[0];
+      $tempstore->set('active_context', $active_context);
+    }
+
+    return $active_context;
   }
 
 }

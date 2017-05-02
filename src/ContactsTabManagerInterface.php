@@ -77,4 +77,20 @@ interface ContactsTabManagerInterface {
    */
   public function verifyTab(ContactTabInterface $tab, UserInterface $contact);
 
+  /**
+   * Get the possible contexts for the current user.
+   *
+   * @return array
+   *   An array of contexts with machine names for keys and labels for values.
+   */
+  public function getContexts();
+
+  /**
+   * Retrieve the active context.
+   *
+   * @return string
+   *   The role ID of the active context.
+   */
+  public function getActiveContext();
+
 }

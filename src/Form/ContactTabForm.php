@@ -59,7 +59,31 @@ class ContactTabForm extends EntityForm {
       'standalone' => TRUE,
     ];
 
+    $form['contexts'] = [
+      '#type' => 'checkboxes',
+      '#title' => $this->t('Contexts to show this tab for'),
+      '#description' => $this->t('If none are selected it will always be shown.'),
+      '#options' => [],
+      '#default_value' => $contact_tab->getContexts(),
+    ];
+    foreach ($this->entityTypeManager->getStorage('user_role')->loadMultiple() as $role) {
+      // Skip any CRM or admin roles and the computed roles.
+      if (substr($role->id(), 0, 4) == 'crm_' || $role->isAdmin() || in_array($role->id(), [RoleInterface::ANONYMOUS_ID, RoleInterface::AUTHENTICATED_ID])) {
+        continue;
+      }
+      $form['contexts']['#options'][$role->id()] = $role->label();
+    }
+
     return $form;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function copyFormValuesToEntity(EntityInterface $entity, array $form, FormStateInterface $form_state) {
+    parent::copyFormValuesToEntity($entity, $form, $form_state);
+
+    $entity->setContexts(array_values(array_filter($form_state->getValue('contexts'))));
   }
 
   /**

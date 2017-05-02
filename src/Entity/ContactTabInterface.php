@@ -29,6 +29,35 @@ interface ContactTabInterface extends ConfigEntityInterface {
   public function setPath($path);
 
   /**
+   * Get the dashboard contexts IDs to show this tab for.
+   *
+   * @return array
+   *   An array containing the context IDs.
+   */
+  public function getContexts();
+
+  /**
+   * Set the dashboard contexts IDs to show this tab for.
+   *
+   * @param array $contexts
+   *   An array containing the context IDs.
+   *
+   * @return $this
+   */
+  public function setContexts(array $contexts);
+
+  /**
+   * Whether we should show a tab in the given context.
+   *
+   * @param string $context
+   *   The context ID.
+   *
+   * @return bool
+   *   Whether we should show the tab.
+   */
+  public function showInContext($context);
+
+  /**
    * Get the relationship definitions.
    *
    * @return array
